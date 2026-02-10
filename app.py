@@ -37,7 +37,7 @@ def load_data_fallback():
     return pd.read_csv("data/cars_cleaned.csv")
 
 # =================================================
-# LOAD MODEL SAFELY (DEPLOYMENT SAFE)
+# LOAD MODEL SAFELY
 # =================================================
 @st.cache_resource
 def load_model():
@@ -101,8 +101,8 @@ if page == "Analytics Dashboard":
         .value_counts()
         .head(5)
         .reset_index()
-        .rename(columns={"index": "car_brand", "car_brand": "total"})
     )
+    top_brands.columns = ["car_brand", "total"]
     st.bar_chart(top_brands.set_index("car_brand"))
 
     # ----- Top Models -----
@@ -112,28 +112,20 @@ if page == "Analytics Dashboard":
         .value_counts()
         .head(5)
         .reset_index()
-        .rename(columns={"index": "car_model", "car_model": "total"})
     )
+    top_models.columns = ["car_model", "total"]
     st.bar_chart(top_models.set_index("car_model"))
 
     # ----- Country Distribution -----
     st.markdown("### 🌍 Country-wise Car Distribution")
-    country_dist = (
-        df["country"]
-        .value_counts()
-        .reset_index()
-        .rename(columns={"index": "country", "country": "total"})
-    )
+    country_dist = df["country"].value_counts().reset_index()
+    country_dist.columns = ["country", "total"]
     st.bar_chart(country_dist.set_index("country"))
 
     # ----- Color Distribution -----
     st.markdown("### 🎨 Car Color Distribution")
-    color_dist = (
-        df["car_color"]
-        .value_counts()
-        .reset_index()
-        .rename(columns={"index": "car_color", "car_color": "total"})
-    )
+    color_dist = df["car_color"].value_counts().reset_index()
+    color_dist.columns = ["car_color", "total"]
     st.bar_chart(color_dist.set_index("car_color"))
 
     # ----- Year Trend -----
@@ -168,14 +160,10 @@ if page == "Analytics Dashboard":
 # =================================================
 if page == "Car Brand Prediction":
 
-    # ----- MODEL GUARD -----
     if model is None or label_encoders is None:
         st.warning(
             "⚠️ Trained ML model files are not available in this deployment.\n\n"
-            "To enable predictions:\n"
-            "1. Clone the repository locally\n"
-            "2. Run `notebooks/analysis_and_model.ipynb`\n"
-            "3. Generate the model files locally\n"
+            "Run `notebooks/analysis_and_model.ipynb` locally to generate them."
         )
         st.stop()
 
@@ -205,7 +193,6 @@ if page == "Car Brand Prediction":
             "credit_card_type": credit_card
         }])
 
-        # Encode categorical features only
         for col in input_data.columns:
             if col in label_encoders:
                 input_data[col] = label_encoders[col].transform(input_data[col])
