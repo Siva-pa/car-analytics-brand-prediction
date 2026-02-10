@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+env/
+
+# OS files
+.DS_Store
+
+# Secrets (optional)
+*.env
+
+# Large / generated files (OPTIONAL)
+# Uncomment if you want to avoid pushing model files
+# model/*.pkl
+
+# ML model artifacts
+model/*.pkl
