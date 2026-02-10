@@ -2,35 +2,54 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 import pickle
+import os
 
-# ------------------ PAGE CONFIG ------------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
-    page_title="Car Analytics & Prediction",
+    page_title="Car Analytics & Brand Prediction",
     layout="wide"
 )
 
 st.title("🚗 Car Analytics & Brand Prediction System")
 
-# ------------------ DB CONNECTION ------------------
+# -------------------------------------------------
+# DATABASE CONNECTION
+# -------------------------------------------------
 @st.cache_resource
 def get_connection():
     return mysql.connector.connect(
         host="localhost",
         user="root",
-        password="Siva",
+        password="Siva",          # change if needed
         database="car_analytics"
     )
 
-# ------------------ LOAD MODEL ------------------
+# -------------------------------------------------
+# LOAD MODEL SAFELY (DEPLOYMENT-SAFE)
+# -------------------------------------------------
 @st.cache_resource
 def load_model():
-    model = pickle.load(open("model/car_brand_model.pkl", "rb"))
-    encoders = pickle.load(open("model/label_encoders.pkl", "rb"))
+    model_path = "model/car_brand_model.pkl"
+    encoder_path = "model/label_encoders.pkl"
+
+    if not os.path.exists(model_path) or not os.path.exists(encoder_path):
+        return None, None
+
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+
+    with open(encoder_path, "rb") as f:
+        encoders = pickle.load(f)
+
     return model, encoders
 
 model, label_encoders = load_model()
 
-# ------------------ SIDEBAR ------------------
+# -------------------------------------------------
+# SIDEBAR
+# -------------------------------------------------
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
@@ -61,70 +80,64 @@ if page == "Analytics Dashboard":
 
     # -------- Top Brands --------
     st.markdown("### 🚘 Top 5 Car Brands")
-    query = """
-    SELECT car_brand, COUNT(*) AS total
-    FROM cars
-    GROUP BY car_brand
-    ORDER BY total DESC
-    LIMIT 5
-    """
-    df_brands = pd.read_sql(query, conn)
+    df_brands = pd.read_sql("""
+        SELECT car_brand, COUNT(*) AS total
+        FROM cars
+        GROUP BY car_brand
+        ORDER BY total DESC
+        LIMIT 5
+    """, conn)
     st.bar_chart(df_brands.set_index("car_brand"))
 
     # -------- Top Models --------
     st.markdown("### 🚗 Top 5 Car Models")
-    query = """
-    SELECT car_model, COUNT(*) AS total
-    FROM cars
-    GROUP BY car_model
-    ORDER BY total DESC
-    LIMIT 5
-    """
-    df_models = pd.read_sql(query, conn)
+    df_models = pd.read_sql("""
+        SELECT car_model, COUNT(*) AS total
+        FROM cars
+        GROUP BY car_model
+        ORDER BY total DESC
+        LIMIT 5
+    """, conn)
     st.bar_chart(df_models.set_index("car_model"))
 
     # -------- Country Distribution --------
     st.markdown("### 🌍 Country-wise Car Distribution")
-    query = """
-    SELECT country, COUNT(*) AS total
-    FROM cars
-    GROUP BY country
-    ORDER BY total DESC
-    """
-    df_country = pd.read_sql(query, conn)
+    df_country = pd.read_sql("""
+        SELECT country, COUNT(*) AS total
+        FROM cars
+        GROUP BY country
+        ORDER BY total DESC
+    """, conn)
     st.bar_chart(df_country.set_index("country"))
 
-    # -------- Car Color Distribution --------
+    # -------- Color Distribution --------
     st.markdown("### 🎨 Car Color Distribution")
-    query = """
-    SELECT car_color, COUNT(*) AS total
-    FROM cars
-    GROUP BY car_color
-    ORDER BY total DESC
-    """
-    df_color = pd.read_sql(query, conn)
+    df_color = pd.read_sql("""
+        SELECT car_color, COUNT(*) AS total
+        FROM cars
+        GROUP BY car_color
+        ORDER BY total DESC
+    """, conn)
     st.bar_chart(df_color.set_index("car_color"))
 
-    # -------- Year-wise Trend --------
+    # -------- Year Trend --------
     st.markdown("### 📈 Cars by Year of Manufacture")
-    query = """
-    SELECT year_of_manufacture, COUNT(*) AS total
-    FROM cars
-    GROUP BY year_of_manufacture
-    ORDER BY year_of_manufacture
-    """
-    df_year = pd.read_sql(query, conn)
+    df_year = pd.read_sql("""
+        SELECT year_of_manufacture, COUNT(*) AS total
+        FROM cars
+        GROUP BY year_of_manufacture
+        ORDER BY year_of_manufacture
+    """, conn)
     st.line_chart(df_year.set_index("year_of_manufacture"))
 
     # -------- Oldest & Newest --------
     st.markdown("### 🕰️ Oldest & Newest Cars")
-    query = """
-    SELECT 
-        MIN(year_of_manufacture) AS oldest,
-        MAX(year_of_manufacture) AS newest
-    FROM cars
-    """
-    df_year_range = pd.read_sql(query, conn)
+    df_year_range = pd.read_sql("""
+        SELECT 
+            MIN(year_of_manufacture) AS oldest,
+            MAX(year_of_manufacture) AS newest
+        FROM cars
+    """, conn)
 
     st.info(
         f"Oldest car year: **{df_year_range['oldest'][0]}** | "
@@ -133,19 +146,30 @@ if page == "Analytics Dashboard":
 
     # -------- Credit Card Usage --------
     st.markdown("### 💳 Credit Card Usage by Brand")
-    query = """
-    SELECT car_brand, credit_card_type, COUNT(*) AS total
-    FROM cars
-    GROUP BY car_brand, credit_card_type
-    ORDER BY car_brand, total DESC
-    """
-    df_cards = pd.read_sql(query, conn)
+    df_cards = pd.read_sql("""
+        SELECT car_brand, credit_card_type, COUNT(*) AS total
+        FROM cars
+        GROUP BY car_brand, credit_card_type
+        ORDER BY car_brand, total DESC
+    """, conn)
     st.dataframe(df_cards)
 
 # =================================================
 # 🤖 CAR BRAND PREDICTION
 # =================================================
 if page == "Car Brand Prediction":
+
+    # ---- Guard for deployment ----
+    if model is None or label_encoders is None:
+        st.warning(
+            "⚠️ Trained ML model files are not available in this deployment.\n\n"
+            "To enable predictions:\n"
+            "1. Clone the repository locally\n"
+            "2. Run `notebooks/analysis_and_model.ipynb`\n"
+            "3. Generate the model files locally\n"
+        )
+        st.stop()
+
     st.subheader("🤖 Predict Car Brand")
 
     conn = get_connection()
@@ -173,8 +197,9 @@ if page == "Car Brand Prediction":
             "credit_card_type": credit_card
         }])
 
+        # Encode only categorical columns
         for col in input_data.columns:
-            if col in label_encoders:  # encode only categorical
+            if col in label_encoders:
                 input_data[col] = label_encoders[col].transform(input_data[col])
 
         prediction = model.predict(input_data)[0]
