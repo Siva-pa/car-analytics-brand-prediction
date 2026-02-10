@@ -4,9 +4,9 @@ import mysql.connector
 import pickle
 import os
 
-# -------------------------------------------------
+# =================================================
 # PAGE CONFIG
-# -------------------------------------------------
+# =================================================
 st.set_page_config(
     page_title="Car Analytics & Brand Prediction",
     layout="wide"
@@ -14,21 +14,31 @@ st.set_page_config(
 
 st.title("🚗 Car Analytics & Brand Prediction System")
 
-# -------------------------------------------------
-# DATABASE CONNECTION
-# -------------------------------------------------
+# =================================================
+# DATABASE CONNECTION (LOCAL ONLY)
+# =================================================
 @st.cache_resource
 def get_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Siva",          # change if needed
-        database="car_analytics"
-    )
+    try:
+        return mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="Siva",   # change if needed
+            database="car_analytics"
+        )
+    except:
+        return None
 
-# -------------------------------------------------
-# LOAD MODEL SAFELY (DEPLOYMENT-SAFE)
-# -------------------------------------------------
+# =================================================
+# LOAD DATA FALLBACK (FOR CLOUD)
+# =================================================
+@st.cache_data
+def load_data_fallback():
+    return pd.read_csv("data/cars_cleaned.csv")
+
+# =================================================
+# LOAD MODEL SAFELY (DEPLOYMENT SAFE)
+# =================================================
 @st.cache_resource
 def load_model():
     model_path = "model/car_brand_model.pkl"
@@ -47,9 +57,9 @@ def load_model():
 
 model, label_encoders = load_model()
 
-# -------------------------------------------------
+# =================================================
 # SIDEBAR
-# -------------------------------------------------
+# =================================================
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
@@ -64,102 +74,101 @@ if page == "Analytics Dashboard":
 
     conn = get_connection()
 
-    # -------- KPIs --------
+    # ----- DATA SOURCE -----
+    if conn is None:
+        st.warning(
+            "⚠️ MySQL database is not available in cloud deployment.\n\n"
+            "Showing analytics using static dataset instead."
+        )
+        df = load_data_fallback()
+    else:
+        df = pd.read_sql("SELECT * FROM cars", conn)
+
+    # ----- KPIs -----
     st.markdown("### 📌 Key Metrics")
     col1, col2, col3 = st.columns(3)
 
-    total_cars = pd.read_sql("SELECT COUNT(*) AS total FROM cars", conn)
-    total_brands = pd.read_sql("SELECT COUNT(DISTINCT car_brand) AS total FROM cars", conn)
-    total_countries = pd.read_sql("SELECT COUNT(DISTINCT country) AS total FROM cars", conn)
-
-    col1.metric("Total Cars", int(total_cars.iloc[0, 0]))
-    col2.metric("Unique Brands", int(total_brands.iloc[0, 0]))
-    col3.metric("Countries Covered", int(total_countries.iloc[0, 0]))
+    col1.metric("Total Cars", len(df))
+    col2.metric("Unique Brands", df["car_brand"].nunique())
+    col3.metric("Countries Covered", df["country"].nunique())
 
     st.divider()
 
-    # -------- Top Brands --------
+    # ----- Top Brands -----
     st.markdown("### 🚘 Top 5 Car Brands")
-    df_brands = pd.read_sql("""
-        SELECT car_brand, COUNT(*) AS total
-        FROM cars
-        GROUP BY car_brand
-        ORDER BY total DESC
-        LIMIT 5
-    """, conn)
-    st.bar_chart(df_brands.set_index("car_brand"))
+    top_brands = (
+        df["car_brand"]
+        .value_counts()
+        .head(5)
+        .reset_index()
+        .rename(columns={"index": "car_brand", "car_brand": "total"})
+    )
+    st.bar_chart(top_brands.set_index("car_brand"))
 
-    # -------- Top Models --------
+    # ----- Top Models -----
     st.markdown("### 🚗 Top 5 Car Models")
-    df_models = pd.read_sql("""
-        SELECT car_model, COUNT(*) AS total
-        FROM cars
-        GROUP BY car_model
-        ORDER BY total DESC
-        LIMIT 5
-    """, conn)
-    st.bar_chart(df_models.set_index("car_model"))
+    top_models = (
+        df["car_model"]
+        .value_counts()
+        .head(5)
+        .reset_index()
+        .rename(columns={"index": "car_model", "car_model": "total"})
+    )
+    st.bar_chart(top_models.set_index("car_model"))
 
-    # -------- Country Distribution --------
+    # ----- Country Distribution -----
     st.markdown("### 🌍 Country-wise Car Distribution")
-    df_country = pd.read_sql("""
-        SELECT country, COUNT(*) AS total
-        FROM cars
-        GROUP BY country
-        ORDER BY total DESC
-    """, conn)
-    st.bar_chart(df_country.set_index("country"))
+    country_dist = (
+        df["country"]
+        .value_counts()
+        .reset_index()
+        .rename(columns={"index": "country", "country": "total"})
+    )
+    st.bar_chart(country_dist.set_index("country"))
 
-    # -------- Color Distribution --------
+    # ----- Color Distribution -----
     st.markdown("### 🎨 Car Color Distribution")
-    df_color = pd.read_sql("""
-        SELECT car_color, COUNT(*) AS total
-        FROM cars
-        GROUP BY car_color
-        ORDER BY total DESC
-    """, conn)
-    st.bar_chart(df_color.set_index("car_color"))
+    color_dist = (
+        df["car_color"]
+        .value_counts()
+        .reset_index()
+        .rename(columns={"index": "car_color", "car_color": "total"})
+    )
+    st.bar_chart(color_dist.set_index("car_color"))
 
-    # -------- Year Trend --------
+    # ----- Year Trend -----
     st.markdown("### 📈 Cars by Year of Manufacture")
-    df_year = pd.read_sql("""
-        SELECT year_of_manufacture, COUNT(*) AS total
-        FROM cars
-        GROUP BY year_of_manufacture
-        ORDER BY year_of_manufacture
-    """, conn)
-    st.line_chart(df_year.set_index("year_of_manufacture"))
+    year_dist = (
+        df.groupby("year_of_manufacture")
+        .size()
+        .reset_index(name="total")
+        .sort_values("year_of_manufacture")
+    )
+    st.line_chart(year_dist.set_index("year_of_manufacture"))
 
-    # -------- Oldest & Newest --------
+    # ----- Oldest & Newest -----
     st.markdown("### 🕰️ Oldest & Newest Cars")
-    df_year_range = pd.read_sql("""
-        SELECT 
-            MIN(year_of_manufacture) AS oldest,
-            MAX(year_of_manufacture) AS newest
-        FROM cars
-    """, conn)
-
     st.info(
-        f"Oldest car year: **{df_year_range['oldest'][0]}** | "
-        f"Newest car year: **{df_year_range['newest'][0]}**"
+        f"Oldest car year: **{df['year_of_manufacture'].min()}** | "
+        f"Newest car year: **{df['year_of_manufacture'].max()}**"
     )
 
-    # -------- Credit Card Usage --------
+    # ----- Credit Card Usage -----
     st.markdown("### 💳 Credit Card Usage by Brand")
-    df_cards = pd.read_sql("""
-        SELECT car_brand, credit_card_type, COUNT(*) AS total
-        FROM cars
-        GROUP BY car_brand, credit_card_type
-        ORDER BY car_brand, total DESC
-    """, conn)
-    st.dataframe(df_cards)
+    cc_usage = (
+        df.groupby(["car_brand", "credit_card_type"])
+        .size()
+        .reset_index(name="total")
+        .sort_values(["car_brand", "total"], ascending=[True, False])
+    )
+    st.dataframe(cc_usage)
 
 # =================================================
 # 🤖 CAR BRAND PREDICTION
 # =================================================
 if page == "Car Brand Prediction":
 
-    # ---- Guard for deployment ----
+    # ----- MODEL GUARD -----
     if model is None or label_encoders is None:
         st.warning(
             "⚠️ Trained ML model files are not available in this deployment.\n\n"
@@ -172,8 +181,7 @@ if page == "Car Brand Prediction":
 
     st.subheader("🤖 Predict Car Brand")
 
-    conn = get_connection()
-    df = pd.read_sql("SELECT * FROM cars", conn)
+    df = load_data_fallback()
 
     country = st.selectbox("Country", sorted(df["country"].unique()))
     car_model = st.selectbox("Car Model", sorted(df["car_model"].unique()))
@@ -197,7 +205,7 @@ if page == "Car Brand Prediction":
             "credit_card_type": credit_card
         }])
 
-        # Encode only categorical columns
+        # Encode categorical features only
         for col in input_data.columns:
             if col in label_encoders:
                 input_data[col] = label_encoders[col].transform(input_data[col])
